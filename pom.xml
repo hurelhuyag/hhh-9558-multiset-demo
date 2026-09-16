@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>demo</groupId>
+  <artifactId>hhh-9558-multiset-demo</artifactId>
+  <version>1.0-SNAPSHOT</version>
+
+  <description>
+    Proof for HHH-9558: MULTISET-style eager fetching of several bag collections in ONE query,
+    without a cartesian product, emulated on PostgreSQL with array_agg(ROW(...)) received in binary format.
+    Run with: mvn verify   (docker-maven-plugin starts/stops PostgreSQL around the ITs)
+  </description>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <hibernate.version>7.4.8.Final</hibernate.version>
+    <lombok.version>1.18.48</lombok.version>
+    <postgres.image>postgres:17-alpine</postgres.image>
+    <!-- postgres.port is NOT declared here on purpose: docker-maven-plugin sets it at runtime
+         to the dynamically mapped host port (a pre-set value would be used as a fixed port) -->
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.hibernate.orm</groupId>
+      <artifactId>hibernate-core</artifactId>
+      <version>${hibernate.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>42.7.13</version>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>${lombok.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>6.1.3</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.17</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+        <configuration>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>${lombok.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+
+      <!-- Start PostgreSQL before the ITs, stop it afterwards -->
+      <plugin>
+        <groupId>io.fabric8</groupId>
+        <artifactId>docker-maven-plugin</artifactId>
+        <version>0.49.0</version>
+        <configuration>
+          <images>
+            <image>
+              <name>${postgres.image}</name>
+              <alias>postgres</alias>
+              <run>
+                <env>
+                  <POSTGRES_USER>demo</POSTGRES_USER>
+                  <POSTGRES_PASSWORD>demo</POSTGRES_PASSWORD>
+                  <POSTGRES_DB>demo</POSTGRES_DB>
+                </env>
+                <ports>
+                  <!-- random free host port, exported as Maven property ${postgres.port} -->
+                  <port>postgres.port:5432</port>
+                </ports>
+                <wait>
+                  <!-- the init-time temp server does not listen on TCP, so a TCP wait on the
+                       mapped port only succeeds once the real server is up -->
+                  <tcp>
+                    <mode>mapped</mode>
+                    <ports><port>5432</port></ports>
+                  </tcp>
+                  <time>60000</time>
+                </wait>
+                <log><prefix>[postgres] </prefix></log>
+              </run>
+            </image>
+          </images>
+        </configuration>
+        <executions>
+          <execution>
+            <id>start-postgres</id>
+            <phase>pre-integration-test</phase>
+            <goals><goal>start</goal></goals>
+          </execution>
+          <execution>
+            <id>stop-postgres</id>
+            <phase>post-integration-test</phase>
+            <goals><goal>stop</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Run the standalone JDBC example against the container, before the ITs -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.6.4</version>
+        <executions>
+          <execution>
+            <id>array-agg-row-example</id>
+            <phase>integration-test</phase>
+            <goals><goal>java</goal></goals>
+            <configuration>
+              <mainClass>demo.ArrayAggRowExample</mainClass>
+              <systemProperties>
+                <systemProperty>
+                  <key>pg.url</key>
+                  <value>jdbc:postgresql://localhost:${postgres.port}/demo</value>
+                </systemProperty>
+              </systemProperties>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.6.0</version>
+        <configuration>
+          <systemPropertyVariables>
+            <postgres.port>${postgres.port}</postgres.port>
+          </systemPropertyVariables>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
