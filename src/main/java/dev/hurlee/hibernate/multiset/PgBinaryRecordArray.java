@@ -1,4 +1,4 @@
-package demo;
+package dev.hurlee.hibernate.multiset;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -73,7 +73,11 @@ public final class PgBinaryRecordArray {
             throw new IllegalStateException("record[] arrived in text format; connect with "
                     + "binaryTransferEnable=2287&prepareThreshold=-1 and use a PreparedStatement");
         }
-        ByteBuffer b = ByteBuffer.wrap(raw);
+        return decodeRecordArray(ByteBuffer.wrap(raw));
+    }
+
+    /** Decodes a one-dimensional {@code record[]} body, e.g. one nested inside a {@code ROW}. */
+    public static Object[][] decodeRecordArray(ByteBuffer b) {
         int ndim = b.getInt();
         b.getInt(); // hasNull flag, not needed: NULL elements are marked with len == -1
         int elemOid = b.getInt();
@@ -174,8 +178,8 @@ public final class PgBinaryRecordArray {
             case 1184 -> OffsetDateTime.ofInstant(                                                 // timestamptz
                     Instant.EPOCH.plus(J2000_EPOCH_MICROS + v.getLong(), ChronoUnit.MICROS), ZoneOffset.UTC);
             case OID_RECORD -> decodeRecord(v);                                  // nested record
-            case OID_RECORD_ARRAY,
-                 1000, 1005, 1007, 1016, 1021, 1022, 1231,                       // bool[], int2[], int4[], int8[], float4[], float8[], numeric[]
+            case OID_RECORD_ARRAY -> decodeRecordArray(v);                       // nested multiset
+            case 1000, 1005, 1007, 1016, 1021, 1022, 1231,                       // bool[], int2[], int4[], int8[], float4[], float8[], numeric[]
                  1009, 1015, 1014, 199, 3807, 2951,                              // text[], varchar[], bpchar[], json[], jsonb[], uuid[]
                  1182, 1183, 1115, 1185 -> decodeArray(v);                       // date[], time[], timestamp[], timestamptz[]
             default -> bytes(v);

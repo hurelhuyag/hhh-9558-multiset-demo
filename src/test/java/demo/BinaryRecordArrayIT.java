@@ -1,5 +1,6 @@
 package demo;
 
+import dev.hurlee.hibernate.multiset.PgBinaryRecordArray;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -140,7 +141,7 @@ class BinaryRecordArrayIT {
     @Test
     void textFormat_isRejectedWithHint() throws Exception {
         // a connection without binaryTransferEnable receives the text literal
-        try (Connection plain = TestDb.connect();
+        try (Connection plain = TestDb.connect(TestDb.POSTGRES_TEXT);
              Statement st = plain.createStatement();
              ResultSet rs = st.executeQuery("select array_agg(row(1,'a'))")) {
             rs.next();

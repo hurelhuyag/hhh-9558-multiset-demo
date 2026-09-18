@@ -1,9 +1,8 @@
-package demo;
+package demo.manytomany;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
-import jakarta.persistence.ManyToOne;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,19 +12,15 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Email {
+public class Permission {
 
     @Id
     @GeneratedValue
     private Long id;
 
-    @ManyToOne(optional = false)
-    private User user;
+    private String code;
 
-    private String address;
-
-    Email(User user, String address) {
-        this.user = user;
-        this.address = address;
+    public Permission(String code) {
+        this.code = code;
     }
 }

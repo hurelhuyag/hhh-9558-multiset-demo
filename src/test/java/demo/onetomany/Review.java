@@ -1,4 +1,4 @@
-package demo;
+package demo.onetomany;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -13,19 +13,23 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Phone {
+public class Review {
 
     @Id
     @GeneratedValue
     private Long id;
 
     @ManyToOne(optional = false)
-    private User user;
+    private Author author;
 
-    private String number;
+    private String text;
 
-    Phone(User user, String number) {
-        this.user = user;
-        this.number = number;
+    /** nullable on purpose: exercises NULL fields inside the record */
+    private Integer stars;
+
+    Review(Author author, String text, Integer stars) {
+        this.author = author;
+        this.text = text;
+        this.stars = stars;
     }
 }
