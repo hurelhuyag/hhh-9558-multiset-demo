@@ -19,6 +19,8 @@ import org.hibernate.sql.ast.tree.from.TableGroup;
 import org.hibernate.sql.ast.tree.from.TableGroupJoin;
 import org.hibernate.sql.ast.tree.select.QuerySpec;
 import org.hibernate.sql.ast.tree.select.SelectStatement;
+import org.hibernate.sql.ast.tree.select.SortSpecification;
+import org.hibernate.query.SortDirection;
 import org.hibernate.sql.results.graph.AssemblerCreationState;
 import org.hibernate.sql.results.graph.DomainResult;
 import org.hibernate.sql.results.graph.DomainResultCreationState;
@@ -57,6 +59,12 @@ public class MultisetCollectionFetch extends CollectionFetch {
     private record NestedExpression(Expression expression, JdbcMapping jdbcMapping) {
     }
 
+    /** Sort keys applied to the decoded rows when the database could not order inside the aggregate. */
+    public record ClientSort(int[] positions, boolean[] descending, boolean[] nullsFirst) {
+    }
+
+    private final ClientSort clientSort;
+
     /**
      * @param existingJoin a join to the collection that was already created (by an entity graph or
      *                     fetch profile) and detached from the owner, or {@code null} to create one
@@ -83,19 +91,33 @@ public class MultisetCollectionFetch extends CollectionFetch {
         // it only lives inside the correlated subquery. The join predicate is reused as the subquery's WHERE.
         TableGroupJoin join = existingJoin;
         if (join == null) {
+            // fetched = false: a fetched join would apply the collection's @OrderBy to the *outer* query;
+            // the ordering is rendered inside the aggregate instead (below)
             join = attribute.createTableGroupJoin(fetchedPath, ownerTableGroup, null, null,
-                    SqlAstJoinType.INNER, true, false, sqlAstCreationState);
+                    SqlAstJoinType.INNER, false, false, sqlAstCreationState);
             fromClauseAccess.registerTableGroup(fetchedPath, join.getJoinedGroup());
         }
         // one-to-many: the element entity's table; @ElementCollection / many-to-many: the collection table (+ joined element)
         PluralTableGroup collectionTableGroup = (PluralTableGroup) join.getJoinedGroup();
 
-        List<ColumnReference> orderBy = new ArrayList<>();
+        // ordering inside the aggregate: the list index, else @OrderBy, else the element id (a bag/set of values has no natural order)
+        List<SortSpecification> orderBy = new ArrayList<>();
         if (attribute.getIndexDescriptor() != null) {
-            attribute.getIndexDescriptor().forEachSelectable((i, c) -> orderBy.add(columnReference(collectionTableGroup, c)));
+            attribute.getIndexDescriptor().forEachSelectable((i, c) ->
+                    orderBy.add(new SortSpecification(columnReference(collectionTableGroup, c), SortDirection.ASCENDING)));
+        } else if (attribute.getOrderByFragment() != null || attribute.getManyToManyOrderByFragment() != null) {
+            QuerySpec scratch = new QuerySpec(false);
+            if (attribute.getManyToManyOrderByFragment() != null) {
+                attribute.getManyToManyOrderByFragment().apply(scratch, collectionTableGroup, sqlAstCreationState);
+            }
+            if (attribute.getOrderByFragment() != null) {
+                attribute.getOrderByFragment().apply(scratch, collectionTableGroup, sqlAstCreationState);
+            }
+            orderBy.addAll(scratch.getSortSpecifications());
         } else if (attribute.elementEntity() != null) {
-            attribute.elementEntity().getIdentifierMapping().forEachSelectable((i, c) -> orderBy.add(columnReference(collectionTableGroup, c)));
-        } // else: a bag/set of values has no natural order
+            attribute.elementEntity().getIdentifierMapping().forEachSelectable((i, c) ->
+                    orderBy.add(new SortSpecification(columnReference(collectionTableGroup, c), SortDirection.ASCENDING)));
+        }
 
         // Element (and index) fetches resolve their columns against getRowColumns() while nested; eager
         // to-ones met on the way join inside the subquery and append their columns as segments (addSegment).
@@ -129,6 +151,7 @@ public class MultisetCollectionFetch extends CollectionFetch {
         }
         rowJdbcMappings = jdbcMappings.toArray(JdbcMapping[]::new);
         rowScales = scales.toArray(Integer[]::new);
+        clientSort = dialect.orderByInsideAggregate() ? null : clientSort(orderBy, attribute.getRowColumns());
 
         QuerySpec subquery = new QuerySpec(false, 1);
         subquery.getFromClause().addRoot(collectionTableGroup);
@@ -181,6 +204,37 @@ public class MultisetCollectionFetch extends CollectionFetch {
         return new ColumnReference(tableGroup.resolveTableReference(column.getContainingTableExpression()), column);
     }
 
+    /**
+     * For a dialect that cannot order inside the aggregate (MySQL): sort keys as ROW positions, or
+     * {@code null} when a sort expression is not a plain row column (the collection then stays unordered).
+     */
+    private static ClientSort clientSort(List<SortSpecification> orderBy, List<SelectableMapping> rowColumns) {
+        if (orderBy.isEmpty()) {
+            return null;
+        }
+        int[] positions = new int[orderBy.size()];
+        boolean[] descending = new boolean[orderBy.size()];
+        boolean[] nullsFirst = new boolean[orderBy.size()];
+        for (int i = 0; i < positions.length; i++) {
+            SortSpecification spec = orderBy.get(i);
+            if (!(spec.getSortExpression() instanceof ColumnReference column)) {
+                return null;
+            }
+            positions[i] = RowColumns.indexOf(rowColumns, column.getSelectableName());
+            if (positions[i] == -1) {
+                return null;
+            }
+            descending[i] = spec.getSortOrder() == SortDirection.DESCENDING;
+            // unspecified: MySQL treats NULL as the lowest value (first ascending, last descending)
+            nullsFirst[i] = switch (spec.getNullPrecedence()) {
+                case FIRST -> true;
+                case LAST -> false;
+                default -> !descending[i];
+            };
+        }
+        return new ClientSort(positions, descending, nullsFirst);
+    }
+
     /** Reserves ROW positions for an eager to-one joined inside the subquery (called while nested fetches are visited). */
     RowSegment addSegment(NavigablePath path, EntityMappingType entity, FetchParent enclosing) {
         RowSegment segment = new RowSegment(path, entity, rowSize, enclosing);
@@ -227,7 +281,7 @@ public class MultisetCollectionFetch extends CollectionFetch {
     @Override
     public CollectionInitializer<?> createInitializer(InitializerParent<?> parent, AssemblerCreationState creationState) {
         return new MultisetCollectionInitializer(getNavigablePath(), getFetchedMapping(), parent, collectionKeyResult,
-                aggregateSelection, rowJdbcMappings, rowScales, dialect, elementFetch, indexFetch, creationState);
+                aggregateSelection, rowJdbcMappings, rowScales, dialect, clientSort, elementFetch, indexFetch, creationState);
     }
 
     @Override

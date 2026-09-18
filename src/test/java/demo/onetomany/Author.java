@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.OrderColumn;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -38,7 +39,9 @@ public class Author {
     @MultisetFetch
     private List<Book> books = new ArrayList<>();
 
+    /** a bag with {@code @OrderBy}: applied inside the aggregate (client-side on MySQL) */
     @OneToMany(mappedBy = "author", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("stars desc nulls last, text")
     @MultisetFetch
     private List<Review> reviews = new ArrayList<>();
 

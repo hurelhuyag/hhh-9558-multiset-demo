@@ -1,6 +1,8 @@
 package demo.onetomany;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
@@ -26,6 +28,9 @@ public class Review {
 
     /** nullable on purpose: exercises NULL fields inside the record */
     private Integer stars;
+
+    @Enumerated(EnumType.ORDINAL)
+    private Sentiment sentiment;
 
     Review(Author author, String text, Integer stars) {
         this.author = author;

@@ -75,6 +75,11 @@ public class MultisetRowProcessingState extends BaseExecutionContext implements 
      * nested multiset may arrive as a JSON string, so those are parsed here before wrapping.
      */
     private Object coerce(Object raw, JdbcMapping mapping) {
+        if (raw instanceof byte[] bytes && !isBinary(mapping.getJdbcJavaType().getJavaTypeClass())) {
+            // a field whose type OID the binary decoder does not know (a PostgreSQL enum, domain or extension type):
+            // PostgreSQL sends those as text, e.g. the enum label
+            raw = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        }
         if (raw instanceof String text) {
             if (dialect.isRowsType(mapping)) {
                 return JsonRecordArrayJdbcType.parseRows(text);
@@ -89,6 +94,11 @@ public class MultisetRowProcessingState extends BaseExecutionContext implements 
             }
         }
         return mapping.getJdbcJavaType().wrap(raw, getSession());
+    }
+
+    private static boolean isBinary(Class<?> javaClass) {
+        return javaClass == byte[].class || javaClass == Byte[].class || java.sql.Blob.class.isAssignableFrom(javaClass)
+                || java.io.Serializable.class == javaClass;
     }
 
     @Override

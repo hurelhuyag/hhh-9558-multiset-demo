@@ -91,8 +91,10 @@ JSON flavour is plain text.
 Requires Hibernate ORM 7.4+, JDK 17+; `hibernate-core` is `provided`. Any immediate fetch of the
 collection becomes a multiset; an explicit HQL `join fetch` stays a join; otherwise the collection is
 as lazy as its mapping says. Supported: `@OneToMany`, `@ManyToMany`, `@ElementCollection` (basic,
-embeddable, map), Set/List(`@OrderColumn`)/Bag/Map, eager to-ones inside the element (joined inside
-the subquery), nested `@MultisetFetch` collections. Not supported: idbag; other databases fail fast.
+embeddable, map), Set/List(`@OrderColumn`)/Bag/Map, `@OrderBy` (rendered inside the aggregate, with
+Hibernate's per-dialect null-precedence handling; sorted client-side on MySQL, which cannot order
+inside `json_arrayagg`), eager to-ones inside the element (joined inside the subquery), nested
+`@MultisetFetch` collections. Not supported: idbag; other databases fail fast.
 
 ## Build and test
 

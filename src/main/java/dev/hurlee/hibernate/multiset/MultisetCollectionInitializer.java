@@ -37,6 +37,7 @@ public class MultisetCollectionInitializer extends AbstractNonJoinCollectionInit
     private final JdbcMapping[] rowJdbcMappings;
     private final Integer[] rowScales;
     private final MultisetDialect dialect;
+    private final MultisetCollectionFetch.ClientSort clientSort;
     private final DomainResultAssembler<?> elementAssembler;
     private final DomainResultAssembler<?> indexAssembler;
     private final CollectionClassification classification;
@@ -67,6 +68,7 @@ public class MultisetCollectionInitializer extends AbstractNonJoinCollectionInit
             JdbcMapping[] rowJdbcMappings,
             Integer[] rowScales,
             MultisetDialect dialect,
+            MultisetCollectionFetch.ClientSort clientSort,
             Fetch elementFetch,
             Fetch indexFetch,
             AssemblerCreationState creationState) {
@@ -75,6 +77,7 @@ public class MultisetCollectionInitializer extends AbstractNonJoinCollectionInit
         this.rowJdbcMappings = rowJdbcMappings;
         this.rowScales = rowScales;
         this.dialect = dialect;
+        this.clientSort = clientSort;
         this.classification = fetchedMapping.getMappedType().getCollectionSemantics().getCollectionClassification();
         this.listIndexBase = fetchedMapping.getIndexMetadata() == null ? 0 : fetchedMapping.getIndexMetadata().getListIndexBase();
 
@@ -131,6 +134,10 @@ public class MultisetCollectionInitializer extends AbstractNonJoinCollectionInit
 
         Object[][] rows = (Object[][]) rowProcessingState.getJdbcValue(aggregateSelection);
         if (rows != null) {
+            if (clientSort != null) {
+                rows = rows.clone();
+                java.util.Arrays.sort(rows, this::compareRows);
+            }
             for (Object[] row : rows) {
                 if (row != null) {
                     materialise(row, data.nested, loadingEntry);
@@ -138,6 +145,33 @@ public class MultisetCollectionInitializer extends AbstractNonJoinCollectionInit
             }
         }
         data.nested.setCurrentRow(null);
+    }
+
+    /** Emulates {@code ORDER BY} inside the aggregate, including null precedence. */
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private int compareRows(Object[] a, Object[] b) {
+        if (a == null || b == null) {
+            return a == null ? (b == null ? 0 : -1) : 1;
+        }
+        for (int i = 0; i < clientSort.positions().length; i++) {
+            Object x = a[clientSort.positions()[i]];
+            Object y = b[clientSort.positions()[i]];
+            int c;
+            if (x == null || y == null) {
+                if (x == null && y == null) {
+                    continue;
+                }
+                return (x == null) == clientSort.nullsFirst()[i] ? -1 : 1;
+            } else if (x instanceof Number nx && y instanceof Number ny) {
+                c = new java.math.BigDecimal(nx.toString()).compareTo(new java.math.BigDecimal(ny.toString()));
+            } else {
+                c = ((Comparable) x).compareTo(y);
+            }
+            if (c != 0) {
+                return clientSort.descending()[i] ? -c : c;
+            }
+        }
+        return 0;
     }
 
     @Override

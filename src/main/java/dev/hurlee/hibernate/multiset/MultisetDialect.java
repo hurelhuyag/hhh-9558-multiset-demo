@@ -6,7 +6,7 @@ import org.hibernate.dialect.Dialect;
 import org.hibernate.dialect.MariaDBDialect;
 import org.hibernate.dialect.MySQLDialect;
 import org.hibernate.dialect.PostgreSQLDialect;
-import org.hibernate.sql.ast.tree.expression.ColumnReference;
+import org.hibernate.sql.ast.tree.select.SortSpecification;
 import org.hibernate.sql.ast.tree.expression.Expression;
 import org.hibernate.type.BasicType;
 import org.hibernate.type.internal.BasicTypeImpl;
@@ -50,7 +50,7 @@ public record MultisetDialect(String aggregateFunction, String rowFunction, bool
         throw new UnsupportedOperationException("@MultisetFetch is not implemented for " + dialect);
     }
 
-    public Expression aggregate(List<? extends Expression> row, List<ColumnReference> orderBy) {
+    public Expression aggregate(List<? extends Expression> row, List<SortSpecification> orderBy) {
         return new MultisetAggregateExpression(aggregateFunction, rowFunction, row, orderByInsideAggregate ? orderBy : List.of(), rowsType);
     }
 

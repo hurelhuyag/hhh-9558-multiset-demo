@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import demo.onetomany.*;
@@ -66,8 +67,15 @@ class MultisetFetchIT {
             s.persist(acme);
             Author alice = new Author("alice")
                     .addBook("A", 100).addBook("B, with \"quotes\"", 200).addBook("C", 300)
-                    .addReview("great", 5).addReview("meh", null);
+                    .addReview("meh", null).addReview("great", 5).addReview("fine", 3);
             alice.getBooks().get(0).setPublisher(acme);
+            alice.getBooks().get(0).setFormat(Format.HARDCOVER);
+            alice.getBooks().get(0).setCondition(Condition.USED);
+            alice.getBooks().get(1).setFormat(Format.EBOOK);
+            alice.getBooks().get(0).setDimensions(new Dimensions(150, 220, new Dimensions.Weight(new BigDecimal("0.350"))));
+            alice.getBooks().get(1).setDimensions(new Dimensions(null, 200, null));
+            alice.getReviews().get(1).setSentiment(Sentiment.POSITIVE);
+            alice.getReviews().get(0).setSentiment(Sentiment.NEGATIVE);
             Author bob = new Author("bob").addBook("D", 400).addReview("ok", 3);
             Author empty = new Author("carol");
             s.persist(alice);
@@ -98,9 +106,26 @@ class MultisetFetchIT {
             assertTrue(Hibernate.isInitialized(alice.getReviews()));
             assertEquals(List.of("A", "B, with \"quotes\"", "C"), alice.getBooks().stream().map(Book::getTitle).toList());
             assertEquals(List.of(100, 200, 300), alice.getBooks().stream().map(Book::getPages).toList());
-            assertEquals(List.of("great", "meh"), alice.getReviews().stream().map(Review::getText).toList());
+            // @OrderBy("stars desc nulls last, text"): 5, 3, then the NULL — regardless of insertion order and database
+            assertEquals(List.of("great", "fine", "meh"), alice.getReviews().stream().map(Review::getText).toList());
             assertEquals(5, alice.getReviews().get(0).getStars());
-            assertNull(alice.getReviews().get(1).getStars());
+            assertNull(alice.getReviews().get(2).getStars());
+
+            // enums: @Enumerated(STRING), JPA 3.2 @EnumeratedValue, @Enumerated(ORDINAL)
+            assertEquals(Format.HARDCOVER, alice.getBooks().get(0).getFormat());
+            assertEquals(Condition.USED, alice.getBooks().get(0).getCondition());
+            assertEquals(Format.EBOOK, alice.getBooks().get(1).getFormat());
+            assertNull(alice.getBooks().get(1).getCondition());
+            assertEquals(Sentiment.POSITIVE, alice.getReviews().get(0).getSentiment()); // "great"
+            assertEquals(Sentiment.NEGATIVE, alice.getReviews().get(2).getSentiment()); // "meh"
+
+            // @Embedded with a nested embeddable and an @AttributeOverride, partially null
+            assertEquals(new Dimensions(150, 220, new Dimensions.Weight(new BigDecimal("0.350"))), alice.getBooks().get(0).getDimensions());
+            Dimensions partial = alice.getBooks().get(1).getDimensions();
+            assertNull(partial.getWidthMm());
+            assertEquals(200, partial.getHeightMm());
+            assertNull(partial.getWeight());
+            assertNull(alice.getBooks().get(2).getDimensions());
 
             // children are managed and wired back to the owner
             Book first = alice.getBooks().get(0);
@@ -145,7 +170,8 @@ class MultisetFetchIT {
             assertEquals(1, stats.getPrepareStatementCount());
             assertEquals(3, authors.size());
             assertEquals(List.of(3, 1, 0), authors.stream().map(a -> a.getBooks().size()).toList());
-            assertEquals(List.of(2, 1, 0), authors.stream().map(a -> a.getReviews().size()).toList());
+            assertEquals(List.of(3, 1, 0), authors.stream().map(a -> a.getReviews().size()).toList());
+            assertEquals(List.of("great", "fine", "meh"), authors.get(0).getReviews().stream().map(Review::getText).toList());
             for (Author a : authors) {
                 assertTrue(Hibernate.isInitialized(a.getBooks()));
                 assertTrue(Hibernate.isInitialized(a.getReviews()));
