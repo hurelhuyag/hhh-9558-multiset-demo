@@ -98,9 +98,15 @@ inside `json_arrayagg`), eager to-ones inside the element (joined inside the sub
 
 ## Build and test
 
+[![CI](https://github.com/hurelhuyag/hhh-9558-multiset-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/hurelhuyag/hhh-9558-multiset-demo/actions/workflows/ci.yml)
+
 ```
 mvn verify
 ```
+`mvn verify -Penhance` runs the same ITs with the test entities bytecode-enhanced
+(`hibernate-maven-plugin`: lazy initialization + dirty tracking). `.github/workflows/ci.yml` runs
+both, plain and enhanced, on JDK 17, 21 and 25 (the databases run in Docker on the GitHub runner)
+and publishes every test invocation per database as a check.
 `docker-maven-plugin` starts `postgres:17-alpine`, `mysql:8.4` and `mariadb:11.8` on random ports
 before the integration tests and stops them afterwards. Requires Docker. The test entities
 (`src/test/java/demo/<case>`) are not part of the jar.

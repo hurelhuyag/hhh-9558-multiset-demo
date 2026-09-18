@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write   # test-reporter publishes the per-database test results as a check
+
+jobs:
+  verify:
+    name: mvn verify ${{ matrix.enhance }} / JDK ${{ matrix.java }}
+    runs-on: ubuntu-latest   # Docker is preinstalled: docker-maven-plugin starts the databases
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ 17, 21, 25 ]
+        enhance: [ plain, enhanced ]   # test entities as compiled / bytecode-enhanced (hibernate-maven-plugin)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Pull database images
+        run: docker pull postgres:17-alpine && docker pull mysql:8.4 && docker pull mariadb:11.8
+
+      - name: Build, start databases, run integration tests
+        run: mvn -B --no-transfer-progress verify ${{ matrix.enhance == 'enhanced' && '-Penhance' || '' }}
+
+      # failsafe's .txt summaries print 0 tests for @ParameterizedClass ITs; the XML has every
+      # invocation ([1] SQLite, [2] PostgreSQL, [3] MySQL, [4] MariaDB), so publish that.
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Integration tests (${{ matrix.enhance }}, JDK ${{ matrix.java }})
+          path: target/failsafe-reports/TEST-*.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload reports and SQL logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: failsafe-reports-${{ matrix.enhance }}-jdk${{ matrix.java }}
+          path: target/failsafe-reports/
+          if-no-files-found: ignore

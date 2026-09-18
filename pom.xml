@@ -239,4 +239,36 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- mvn verify -Penhance : run the same ITs against bytecode-enhanced test entities -->
+    <profile>
+      <id>enhance</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-maven-plugin</artifactId>
+            <version>${hibernate.version}</version>
+            <executions>
+              <execution>
+                <id>enhance-test-entities</id>
+                <phase>process-test-classes</phase>
+                <goals><goal>enhance</goal></goals>
+                <configuration>
+                  <classesDirectory>${project.build.testOutputDirectory}</classesDirectory>
+                  <enableLazyInitialization>true</enableLazyInitialization>
+                  <enableDirtyTracking>true</enableDirtyTracking>
+                  <!-- off (the plugin default): the test entities maintain both sides of their associations
+                       themselves (Author.addBook), which association management would double up -->
+                  <enableAssociationManagement>false</enableAssociationManagement>
+                  <enableExtendedEnhancement>false</enableExtendedEnhancement>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
